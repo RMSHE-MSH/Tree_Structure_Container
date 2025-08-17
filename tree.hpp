@@ -1,10 +1,12 @@
 /**
  * @file tree.hpp
  * @date 26.02.2023
+ * @date Upgrade1.20.01.2025
  * @author RMSHE
  *
  * < GasSensorOS >
  * Copyright(C) 2023 RMSHE. All rights reserved.
+ * Copyright(C) 2025 RMSHE. All rights reserved.
  *
  * This program is free software : you can redistribute it and /or modify
  * it under the terms of the GNU Affero General Public License as
@@ -39,6 +41,7 @@ Tree类包含了树的遍历、节点查找、节点删除等方法。其中，�
 #include <algorithm>
 #include <make_ptr.hpp>
 #include <memory>
+#include <queue>
 #include <unordered_map>
 #include <vector>
 
@@ -91,25 +94,36 @@ class TreeNode {
     }
 
     /**
-     * @brief 在当前节点的后裔中查找一个指定数据值的节点.
-     * @param target_node_data const T&类型的参数，表示要查找的节点数据(值).
-     * @return TreeNode<T>* 指向查找到的节点的指针，如果未找到返回 nullptr.
-     * @note 使用示例：parent_node_ptr->findDescendant(target_node_data);
+     * @brief 在当前节点的后裔中查找所有与指定数据匹配的节点
+     *
+     * 遍历当前节点及其所有子节点，递归查找匹配的数据，并返回所有匹配节点的指针。
+     * 该方法能够处理树中存在多个相同数据值的节点，返回所有匹配的节点指针。
+     *
+     * @param target_node_data 要查找的目标节点数据
+     * @return std::vector<TreeNode<T>*> 返回一个包含所有匹配节点指针的容器
+     *         如果没有找到任何匹配节点，则返回空容器
+     *
+     * @note 该方法使用递归方式遍历树结构，因此在树的深度较大时可能存在栈溢出的风险。
+     *       推荐对树的深度进行适当控制。
      */
-    TreeNode<T>* findDescendant(const T& target_node_data) {
-        // 遍历当前节点的每一个子节点
+    std::vector<TreeNode<T>*> findDescendants(const T& target_node_data) {
+        std::vector<TreeNode<T>*> result;  ///< 用于存储找到的所有匹配节点指针
+
+        // 遍历当前节点的所有子节点
         for (auto& child : children) {
+            // 如果子节点的数据与目标数据匹配，加入结果集
             if (child->node_data == target_node_data) {
-                // 如果当前子节点的数据等于要查找的数据，则返回该子节点的指针。
-                return child.get();
-            } else {
-                // 否则，递归地调用子节点的 findDescendant
-                // 方法来查找是否存在指定数据的节点，如果找到，则返回该子节点的指针。这是一个深度优先的递归遍历方式。
-                TreeNode<T>* found = child->findDescendant(target_node_data);
-                if (found != nullptr) return found;
+                result.push_back(child.get());
             }
+
+            // 递归查找子节点的后裔节点
+            std::vector<TreeNode<T>*> child_result = child->findDescendants(target_node_data);
+
+            // 将子节点的查找结果合并到当前结果中
+            result.insert(result.end(), child_result.begin(), child_result.end());
         }
-        return nullptr;  // 如果遍历完所有子节点都没有找到，则返回 nullptr 表示没有找到该节点。
+
+        return result;  ///< 返回所有找到的匹配节点
     }
 
     /**
@@ -246,22 +260,27 @@ class Tree {
     }
 
     /**
-     * @brief 在树中查找指定数据的节点
-     * @param target_node_data const T&类型的参数，表示要查找的节点数据(值).
-     * @return TreeNode<T>* 指向查找到的节点的指针，如果未找到返回 nullptr.
-     * @note 使用示例：tree.findNode(target_node_data);
+     * @brief 从树的根节点开始查找指定数据值的所有节点.
+     *
+     * 从树的根节点开始递归查找后裔节点，返回所有匹配的节点指针。
+     * 如果找到与指定数据匹配的节点，则返回这些节点的指针；否则，返回空容器。
+     *
+     * @param target_node_data 要查找的节点数据.
+     * @return std::vector<TreeNode<T>*> 包含所有匹配节点指针的容器，如果未找到返回空容器.
+     * @note 此方法会调用 `findDescendants` 来查找整个树中与目标数据匹配的所有节点。
+     *       如果根节点的数据匹配目标数据，也会包含根节点自身。
      */
-    TreeNode<T>* findNode(const T& target_node_data) {
-        // 在根节点下查找目标节点(查找范围不包含根节点).
-        TreeNode<T>* node_ptr = root->findDescendant(target_node_data);
+    std::vector<TreeNode<T>*> findNode(const T& target_node_data) {
+        // 使用根节点查找所有匹配的后裔节点
+        std::vector<TreeNode<T>*> node_ptrs = root->findDescendants(target_node_data);
 
-        /*
-        如果上一步的查找结果 node_ptr 为空指针，则：
-            如果根节点的数据等于要查找目标数据，则我们可断定用户查找的是根节点直接(返回根节点的指针)，否则即在包含根节点的整颗树的范围内找不到目标节点(返回空指针)
-        否则：
-            在根节点下查找到目标节点, 直接返回查找到的节点的指针.
-        */
-        return node_ptr == nullptr ? (root->node_data == target_node_data ? root.get() : nullptr) : node_ptr;
+        // 如果根节点本身的数据与目标数据匹配，则将根节点加入结果
+        if (root->node_data == target_node_data) {
+            node_ptrs.push_back(root.get());
+        }
+
+        // 返回所有匹配的节点指针(包括根节点，如果它本身匹配)
+        return node_ptrs;
     }
 
     /**
